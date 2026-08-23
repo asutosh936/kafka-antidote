@@ -227,6 +227,9 @@ Poison pill(s) detected in group 'orders-consumer' @ localhost:PORT:
     log-end offset   : 5
     lag              : 3
 
+In plain terms: consumer group 'orders-consumer' is stuck on message #2 of orders partition 0;
+3 message(s) are piling up behind it.
+
 Next: inspect the payload —
   antidote inspect --bootstrap localhost:PORT --topic orders --partition 0 --offset 2
  exit code = 1   (0=clean, 1=poison detected)

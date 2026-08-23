@@ -110,6 +110,12 @@ public final class DiagnoseCommand implements Callable<Integer> {
             out.println();
         }
         StuckPosition firstStuck = stuck.get(0);
+        String plural = stuck.size() == 1 ? "" : " (and " + (stuck.size() - 1) + " more partition(s))";
+        out.println("In plain terms: consumer group '" + group + "' is stuck on message #"
+                + firstStuck.committedOffset() + " of " + firstStuck.topic() + " partition "
+                + firstStuck.partition() + "; " + firstStuck.lag()
+                + " message(s) are piling up behind it" + plural + ".");
+        out.println();
         out.println("Next: inspect the payload —");
         out.println("  antidote inspect --bootstrap " + bootstrap
                 + " --topic " + firstStuck.topic()
