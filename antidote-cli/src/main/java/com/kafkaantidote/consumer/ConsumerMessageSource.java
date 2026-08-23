@@ -7,6 +7,7 @@ import com.kafkaantidote.core.RawMessage;
 import com.kafkaantidote.core.ReinjectionPlan;
 import com.kafkaantidote.core.StuckPosition;
 import com.kafkaantidote.core.TopicPartitionOffset;
+import com.kafkaantidote.reinject.ReinjectionScriptGenerator;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -128,6 +129,9 @@ public final class ConsumerMessageSource implements MessageSource {
     private static Properties adminProps(String bootstrapServers) {
         Properties p = new Properties();
         p.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        // Fail promptly on an unreachable broker rather than hanging (default.api >= request).
+        p.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 8_000);
+        p.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 15_000);
         return p;
     }
 
@@ -197,11 +201,17 @@ public final class ConsumerMessageSource implements MessageSource {
         // A throwaway group that never commits — assign()-based access does not join or affect it.
         p.put(ConsumerConfig.GROUP_ID_CONFIG, "antidote-inspector-" + System.nanoTime());
         p.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
+        // Fail promptly on an unreachable broker rather than hanging (default.api >= request).
+        p.put(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG, 8_000);
+        p.put(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 15_000);
         return p;
     }
 
     @Override
     public ReinjectionPlan planReinjection(RawMessage original, byte[] correctedPayload) {
-        throw new UnsupportedOperationException("planReinjection is implemented in Phase 3");
+        Objects.requireNonNull(original, "original");
+        Objects.requireNonNull(correctedPayload, "correctedPayload");
+        // Generating the plan is pure and read-only: it neither produces nor mutates anything (R4.6).
+        return ReinjectionScriptGenerator.generate(original, correctedPayload, bootstrapServers);
     }
 }

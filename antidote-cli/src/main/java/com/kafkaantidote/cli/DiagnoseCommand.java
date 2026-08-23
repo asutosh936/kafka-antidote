@@ -76,6 +76,23 @@ public final class DiagnoseCommand implements Callable<Integer> {
             return ExitCodes.CONNECTION;
         }
 
+        if (json) {
+            StringBuilder arr = new StringBuilder("[");
+            for (int i = 0; i < stuck.size(); i++) {
+                if (i > 0) {
+                    arr.append(',');
+                }
+                arr.append(stuck.get(i).toJson());
+            }
+            arr.append(']');
+            out.println("{\"bootstrap\":" + com.kafkaantidote.core.Json.quote(bootstrap)
+                    + ",\"group\":" + com.kafkaantidote.core.Json.quote(group)
+                    + ",\"poisonDetected\":" + !stuck.isEmpty()
+                    + ",\"stuck\":" + arr + "}");
+            out.flush();
+            return stuck.isEmpty() ? ExitCodes.OK : ExitCodes.POISON_DETECTED;
+        }
+
         if (stuck.isEmpty()) {
             out.println("No poison pill detected — " + coordinates.toHuman()
                     + " has no stuck partitions.");

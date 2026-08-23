@@ -141,6 +141,26 @@ class InspectIT {
                 "actionable message: " + errText);
     }
 
+    // ---- R5.6: --json output ----
+    @Test
+    void inspectCommandEmitsJson() throws Exception {
+        String topic = "json-" + System.nanoTime();
+        createTopic(topic, 1);
+        produce(topic, 0, generator.generate(PoisonType.JSON_WRONG_TYPE));
+
+        StringWriter out = new StringWriter();
+        int code = new CommandLine(new Antidote()).setOut(new PrintWriter(out)).execute(
+                "inspect", "--bootstrap", bootstrap(), "--topic", topic,
+                "--partition", "0", "--offset", "0", "--json");
+
+        assertEquals(ExitCodes.OK, code);
+        String json = out.toString();
+        assertTrue(json.contains("\"valueBase64\""), json);
+        assertTrue(json.contains("\"classification\""), json);
+        assertTrue(json.contains("\"category\""), json);
+        assertTrue(json.contains("\"heuristic\":true"), json);
+    }
+
     // ------------------------------ helpers ------------------------------
 
     private void createTopic(String topic, int partitions) throws Exception {

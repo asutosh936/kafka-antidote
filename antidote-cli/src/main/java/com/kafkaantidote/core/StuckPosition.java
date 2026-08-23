@@ -27,4 +27,12 @@ public record StuckPosition(String topic, int partition, long committedOffset,
                 + " logEnd=" + logEndOffset
                 + " lag=" + lag;
     }
+
+    public String toJson() {
+        return "{\"topic\":" + Json.quote(topic)
+                + ",\"partition\":" + partition
+                + ",\"committedOffset\":" + committedOffset
+                + ",\"logEndOffset\":" + logEndOffset
+                + ",\"lag\":" + lag + "}";
+    }
 }

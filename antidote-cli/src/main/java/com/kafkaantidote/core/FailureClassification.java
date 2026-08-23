@@ -34,4 +34,11 @@ public record FailureClassification(Category category, String detail, Confidence
     public String toHuman() {
         return "[heuristic: " + confidence + "] " + category + " — " + detail;
     }
+
+    public String toJson() {
+        return "{\"category\":" + Json.quote(category.name())
+                + ",\"confidence\":" + Json.quote(confidence.name())
+                + ",\"heuristic\":true"
+                + ",\"detail\":" + Json.quote(detail) + "}";
+    }
 }

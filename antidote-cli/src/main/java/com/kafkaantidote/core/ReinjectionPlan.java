@@ -23,4 +23,10 @@ public record ReinjectionPlan(TopicPartitionOffset target, String language, Stri
         return "re-injection plan (" + language + ") targeting exact partition "
                 + target.topic() + "-" + target.partition();
     }
+
+    public String toJson() {
+        return "{\"target\":" + target.toJson()
+                + ",\"language\":" + Json.quote(language)
+                + ",\"script\":" + Json.quote(scriptContent) + "}";
+    }
 }

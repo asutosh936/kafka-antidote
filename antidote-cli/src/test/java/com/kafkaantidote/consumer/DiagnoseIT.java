@@ -159,6 +159,27 @@ class DiagnoseIT {
         assertTrue(out.toString().toLowerCase().contains("no poison"), "output: " + out);
     }
 
+    // ---- R5.6: --json output ----
+    @Test
+    void diagnoseCommandEmitsJson() throws Exception {
+        String topic = "json-stuck-" + System.nanoTime();
+        String group = "g-" + System.nanoTime();
+        createTopic(topic, 1);
+        produce(topic, 0, 5);
+        setCommitted(group, topic, 0, 2);
+
+        StringWriter out = new StringWriter();
+        int code = new CommandLine(new Antidote()).setOut(new PrintWriter(out)).execute(
+                "diagnose", "--bootstrap", bootstrap(), "--group", group,
+                "--poll-interval", "200ms", "--samples", "2", "--json");
+
+        assertEquals(ExitCodes.POISON_DETECTED, code);
+        String json = out.toString();
+        assertTrue(json.contains("\"poisonDetected\":true"), json);
+        assertTrue(json.contains("\"lag\":3"), json);
+        assertTrue(json.contains("\"committedOffset\":2"), json);
+    }
+
     // ------------------------------ test fixtures / helpers ------------------------------
 
     private void createTopic(String topic, int partitions) throws Exception {

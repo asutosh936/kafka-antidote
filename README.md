@@ -1,12 +1,39 @@
 # Kafka Antidote
 
-A command-line tool that connects to a Kafka **consumer group**, finds the offset stuck on a
-poison pill, dumps the un-deserializable payload for inspection, and generates a **safe**
-re-injection script.
+**A Kafka consumer group is stuck on one bad message at 2am. This tool finds it, shows you the bytes,
+and hands you a safe script to recover — in one command, without reading raw logs.**
 
-> **Status:** early development. **Phase 0 (skeleton & test harness) is complete.** The `diagnose`,
-> `inspect`, and `gen-reinject` commands exist with full `--help` but their logic lands in later
-> phases (they currently exit with code `64`, "not implemented in this phase").
+`diagnose` locates the stuck offset, `inspect` dumps and classifies the un-deserializable payload,
+and `gen-reinject` generates a reviewable script that re-injects a corrected message to the exact
+original partition. Diagnose and inspect are strictly read-only.
+
+> **Status:** v0.1 feature-complete — all three commands (`diagnose`, `inspect`, `gen-reinject`)
+> are implemented, with `--json` output and 50+ unit/integration tests against a real broker. v0.1
+> supports plain Kafka **consumers**; Kafka Streams (v0.2) and Connect (v0.3) are planned.
+
+## Quick start
+
+```bash
+mvn -q -pl antidote-cli -am package   # build the fat jar (skip tests with -DskipTests)
+```
+
+```bash
+java -jar antidote-cli/target/antidote.jar diagnose --bootstrap localhost:9092 --group my-group
+```
+
+```bash
+java -jar antidote-cli/target/antidote.jar inspect --bootstrap localhost:9092 --topic orders --partition 0 --offset 84213
+```
+
+```bash
+java -jar antidote-cli/target/antidote.jar gen-reinject --bootstrap localhost:9092 --topic orders --partition 0 --offset 84213 --corrected-payload ./fixed.bin --out ./Reinject.java
+```
+
+No cluster handy? Watch the whole flow against a throwaway broker (needs Docker):
+
+```bash
+./demo.sh
+```
 
 ## Requirements
 
@@ -22,7 +49,10 @@ kafka-antidote/
 ├── poison-fixtures/   # standalone corpus generator: the 5 poison-pill payload types
 └── antidote-cli/      # the CLI tool
     ├── core/          # MessageSource boundary + immutable value types
-    └── cli/           # picocli commands: diagnose, inspect, gen-reinject
+    ├── consumer/      # ConsumerMessageSource — the only code that touches kafka-clients
+    ├── payload/       # heuristic classifier + payload presenter
+    ├── reinject/      # safe re-injection script generator
+    └── cli/           # picocli commands + the MessageSources wiring point
 ```
 
 ## Architecture
@@ -280,8 +310,60 @@ Message at orders-0@2
     {"id":"order-2","amount":true,"quantity":"seven"}
 ```
 
+## JSON output
+
+Every command supports `--json` for scripting. Byte fields are base64-encoded so no bytes are lost.
+
+`diagnose --json`:
+
+```json
+{
+  "bootstrap": "localhost:9092",
+  "group": "orders-consumer",
+  "poisonDetected": true,
+  "stuck": [
+    { "topic": "orders", "partition": 0, "committedOffset": 2, "logEndOffset": 5, "lag": 3 }
+  ]
+}
+```
+
+`inspect --json`:
+
+```json
+{
+  "message": {
+    "position": { "topic": "orders", "partition": 0, "offset": 2 },
+    "keyBase64": "b3JkZXItMg==",
+    "valueBase64": "eyJpZCI6...",
+    "headers": { "content-type": "YXBwbGljYXRpb24vanNvbg==" },
+    "timestamp": 1787460604960,
+    "serializedSize": 49
+  },
+  "classification": { "category": "UNKNOWN", "confidence": "UNSURE", "heuristic": true, "detail": "..." }
+}
+```
+
+`gen-reinject --json`:
+
+```json
+{ "target": { "topic": "orders", "partition": 0, "offset": 2 }, "language": "java", "script": "..." }
+```
+
+Exit codes: `0` clean · `1` poison detected · `2` usage error · `3` connection failure ·
+`4` fetch failed.
+
 ## Safety
 
 `diagnose` and `inspect` are strictly read-only — they never commit, seek, or otherwise mutate a
 consumer group's offsets. Re-injection **preserves data but does not unstick the group**; advancing
 past a poison pill is always a separate, deliberate, human-initiated action.
+
+## Contributing & license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the build/test workflow and the architecture boundary
+rules, and [docs/good-first-issues.md](docs/good-first-issues.md) for starter tasks — the natural
+first one is the v0.2 Kafka Streams `MessageSource`.
+
+Licensed under the [MIT License](LICENSE).
+
+Suggested GitHub topics: `kafka`, `poison-pill`, `dead-letter-queue`, `cli`, `java`, `reliability`.

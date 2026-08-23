@@ -20,4 +20,10 @@ public record TopicPartitionOffset(String topic, int partition, long offset) {
     public String toHuman() {
         return topic + "-" + partition + "@" + offset;
     }
+
+    public String toJson() {
+        return "{\"topic\":" + Json.quote(topic)
+                + ",\"partition\":" + partition
+                + ",\"offset\":" + offset + "}";
+    }
 }

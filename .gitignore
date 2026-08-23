@@ -1,5 +1,7 @@
 target/
 *.class
+dependency-reduced-pom.xml
+.jqwik-database
 .idea/
 *.iml
 .vscode/

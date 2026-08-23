@@ -77,7 +77,12 @@ public final class InspectCommand implements Callable<Integer> {
         }
 
         FailureClassification classification = FailureClassifier.classify(raw);
-        out.println(PayloadPresenter.toHuman(raw, classification));
+        if (json) {
+            out.println("{\"message\":" + raw.toJson()
+                    + ",\"classification\":" + classification.toJson() + "}");
+        } else {
+            out.println(PayloadPresenter.toHuman(raw, classification));
+        }
         out.flush();
         return ExitCodes.OK;
     }

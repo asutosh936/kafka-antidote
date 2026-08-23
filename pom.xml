@@ -11,6 +11,14 @@
     <name>Kafka Antidote (parent)</name>
     <description>Kafka poison-pill recovery tool — diagnose, inspect, and safely re-inject.</description>
 
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <modules>
         <module>poison-fixtures</module>
         <module>antidote-cli</module>

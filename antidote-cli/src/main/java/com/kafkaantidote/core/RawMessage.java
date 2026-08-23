@@ -1,5 +1,6 @@
 package com.kafkaantidote.core;
 
+import java.util.Base64;
 import java.util.Map;
 import java.util.Objects;
 
@@ -58,5 +59,26 @@ public final class RawMessage {
                 + " (" + serializedSize + " bytes, "
                 + (key == null ? "null key" : key.length + "-byte key") + ", "
                 + headers.size() + " headers, ts=" + timestamp + ")";
+    }
+
+    /** Machine-precise form: byte fields are base64-encoded so no bytes are lost. */
+    public String toJson() {
+        Base64.Encoder b64 = Base64.getEncoder();
+        StringBuilder h = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, byte[]> e : headers.entrySet()) {
+            if (!first) {
+                h.append(',');
+            }
+            h.append(Json.quote(e.getKey())).append(':').append(Json.quote(b64.encodeToString(e.getValue())));
+            first = false;
+        }
+        h.append('}');
+        return "{\"position\":" + position.toJson()
+                + ",\"keyBase64\":" + (key == null ? "null" : Json.quote(b64.encodeToString(key)))
+                + ",\"valueBase64\":" + Json.quote(b64.encodeToString(value))
+                + ",\"headers\":" + h
+                + ",\"timestamp\":" + timestamp
+                + ",\"serializedSize\":" + serializedSize + "}";
     }
 }
