@@ -15,8 +15,13 @@ final class MessageSources {
     private MessageSources() {
     }
 
-    /** The v0.1 implementation: plain Kafka consumers. */
-    static MessageSource forConsumer(int samples, Duration pollInterval) {
-        return new ConsumerMessageSource(samples, pollInterval);
+    /** The v0.1 implementation, configured for stuck-offset detection (diagnose). */
+    static MessageSource forConsumer(String bootstrapServers, int samples, Duration pollInterval) {
+        return new ConsumerMessageSource(bootstrapServers, samples, pollInterval);
+    }
+
+    /** The v0.1 implementation for fetch-only use (inspect); sampling config is irrelevant here. */
+    static MessageSource forConsumer(String bootstrapServers) {
+        return new ConsumerMessageSource(bootstrapServers, 1, Duration.ZERO);
     }
 }

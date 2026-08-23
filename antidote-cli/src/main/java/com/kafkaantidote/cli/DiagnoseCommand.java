@@ -65,7 +65,7 @@ public final class DiagnoseCommand implements Callable<Integer> {
             return ExitCodes.USAGE;
         }
 
-        MessageSource source = MessageSources.forConsumer(samples, interval);
+        MessageSource source = MessageSources.forConsumer(bootstrap, samples, interval);
         GroupCoordinates coordinates = new GroupCoordinates(bootstrap, group);
 
         final List<StuckPosition> stuck;

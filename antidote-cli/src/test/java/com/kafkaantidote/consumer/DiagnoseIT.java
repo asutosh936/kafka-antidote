@@ -47,7 +47,7 @@ class DiagnoseIT {
     private static final Duration INTERVAL = Duration.ofMillis(200);
 
     private ConsumerMessageSource newSource() {
-        return new ConsumerMessageSource(SAMPLES, INTERVAL);
+        return new ConsumerMessageSource(bootstrap(), SAMPLES, INTERVAL);
     }
 
     private String bootstrap() {

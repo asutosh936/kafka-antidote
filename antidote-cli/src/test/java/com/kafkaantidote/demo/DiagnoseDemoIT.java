@@ -1,6 +1,10 @@
 package com.kafkaantidote.demo;
 
 import com.kafkaantidote.cli.Antidote;
+import com.kafkaantidote.fixtures.PoisonFixture;
+import com.kafkaantidote.fixtures.PoisonFixtureGenerator;
+import com.kafkaantidote.fixtures.PoisonType;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -14,6 +18,8 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.internals.RecordHeader;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.junit.jupiter.api.Test;
@@ -44,28 +50,36 @@ class DiagnoseDemoIT {
     static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka-native:3.8.1");
 
     @Test
-    void showDiagnoseAgainstAStuckGroup() throws Exception {
+    void showDiagnoseThenInspectAgainstAStuckGroup() throws Exception {
         String bootstrap = KAFKA.getBootstrapServers();
         String topic = "orders";
         String group = "orders-consumer";
 
-        // Set the scene: 5 messages produced, group consumed 2 then stalled -> lag 3 on partition 0.
+        // Set the scene: 5 messages, a real poison pill at offset 2, group stalled there (lag 3).
         createTopic(bootstrap, topic, 1);
-        produce(bootstrap, topic, 0, 5);
+        produceScenario(bootstrap, topic);
         setCommitted(bootstrap, group, topic, 0, 2);
 
         System.out.println();
         System.out.println("=========================================================");
-        System.out.println(" LIVE DEMO — a consumer group stuck at offset 2 (lag 3)");
+        System.out.println(" LIVE DEMO — group stuck on a poison pill at offset 2 (lag 3)");
+        System.out.println();
+        System.out.println(" STEP 1 (Phase 1) — find the stuck offset:");
         System.out.println(" $ antidote diagnose --bootstrap " + bootstrap + " --group " + group);
-        System.out.println("=========================================================");
-
-        int code = new CommandLine(new Antidote()).execute(
+        System.out.println("---------------------------------------------------------");
+        int diagCode = new CommandLine(new Antidote()).execute(
                 "diagnose", "--bootstrap", bootstrap, "--group", group,
                 "--poll-interval", "200ms", "--samples", "2");
+        System.out.println(" (diagnose exit code = " + diagCode + ")");
 
+        System.out.println();
+        System.out.println(" STEP 2 (Phase 2) — dump & classify the poison payload:");
+        System.out.println(" $ antidote inspect --bootstrap " + bootstrap + " --topic " + topic
+                + " --partition 0 --offset 2");
         System.out.println("---------------------------------------------------------");
-        System.out.println(" exit code = " + code + "   (0=clean, 1=poison detected)");
+        int inspectCode = new CommandLine(new Antidote()).execute(
+                "inspect", "--bootstrap", bootstrap, "--topic", topic, "--partition", "0", "--offset", "2");
+        System.out.println(" (inspect exit code = " + inspectCode + ")");
         System.out.println("=========================================================");
         System.out.println();
     }
@@ -78,16 +92,26 @@ class DiagnoseDemoIT {
         }
     }
 
-    private void produce(String bootstrap, String topic, int partition, int count) throws Exception {
+    /** Produces 5 records to partition 0 with a real poison pill (JSON wrong-type) at offset 2. */
+    private void produceScenario(String bootstrap, String topic) throws Exception {
+        PoisonFixture poison = new PoisonFixtureGenerator().generate(PoisonType.JSON_WRONG_TYPE);
         Properties p = new Properties();
         p.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap);
         p.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
         p.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
         p.put(ProducerConfig.ACKS_CONFIG, "all");
         try (KafkaProducer<byte[], byte[]> producer = new KafkaProducer<>(p)) {
-            for (int i = 0; i < count; i++) {
-                producer.send(new ProducerRecord<>(topic, partition, null,
-                        ("order-" + i).getBytes(java.nio.charset.StandardCharsets.UTF_8))).get();
+            for (int i = 0; i < 5; i++) {
+                byte[] key = ("order-" + i).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                byte[] value = (i == 2)
+                        ? poison.value()
+                        : ("{\"id\":\"order-" + i + "\",\"amount\":" + (i * 10) + "}")
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                List<Header> headers = new ArrayList<>();
+                if (i == 2) {
+                    poison.headers().forEach((k, v) -> headers.add(new RecordHeader(k, v)));
+                }
+                producer.send(new ProducerRecord<>(topic, 0, key, value, headers)).get();
             }
         }
     }
