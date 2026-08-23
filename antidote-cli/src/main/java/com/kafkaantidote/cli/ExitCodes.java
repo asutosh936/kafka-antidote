@@ -8,6 +8,9 @@ public final class ExitCodes {
     /** Clean run — includes "no poison pill detected" (R1.3). */
     public static final int OK = 0;
 
+    /** Diagnosis succeeded and at least one stuck partition was found (grep-style signal). */
+    public static final int POISON_DETECTED = 1;
+
     /** Bad or missing arguments / usage error (picocli default). */
     public static final int USAGE = 2;
 

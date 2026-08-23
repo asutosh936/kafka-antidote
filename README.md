@@ -61,51 +61,38 @@ corpus generator and is not part of the runtime call path.)
 
 ## End-to-end data flow
 
-The tool's job is **diagnose → inspect → hand off a safe script**. Steps 1–3 never write to or mutate
-the cluster; only the human, in step 4, produces anything — and even then, re-injection preserves
-data without unsticking the group (Spec R4.6).
+The tool runs as a pipeline: each stage consumes the previous stage's output and produces a new
+artifact. The three tool stages are strictly **read-only**; the only cluster write is the human
+running the generated script at the end — and even that preserves data without unsticking the group
+(Spec R4.6).
+
+**Legend:** 🟦 read-only tool step · 🟩 data artifact produced · 🟧 human action · 🟥 safety invariant
 
 ```mermaid
-sequenceDiagram
-    actor Eng as On-call engineer
-    participant CLI as antidote CLI
-    participant MS as MessageSource
-    participant K as Kafka broker
+flowchart TD
+    A(["Stalled consumer group"]) --> S1
 
-    rect rgb(224,242,241)
-    Note over Eng,K: 1 · diagnose (read-only)
-    Eng->>CLI: diagnose --group g --samples 2
-    CLI->>MS: findStuckPositions(group)
-    MS->>K: AdminClient samples committed and log-end offsets, twice
-    K-->>MS: offsets
-    MS-->>CLI: list of StuckPosition
-    CLI-->>Eng: stuck topic/partition/offset + lag
-    end
+    S1["1 · diagnose &nbsp;(read-only)"] --> D1["StuckPosition<br/>topic · partition · committed offset · lag"]
+    D1 --> S2["2 · inspect &nbsp;(read-only)"]
+    S2 --> D2["RawMessage + FailureClassification<br/>hex · best-effort UTF-8 · labeled heuristic"]
+    D2 --> H1["Operator fixes root cause,<br/>writes corrected-payload file"]
+    H1 --> S3["3 · gen-reinject &nbsp;(no cluster writes)"]
+    S3 --> D3["ReinjectionPlan<br/>reviewable Java producer script<br/>dry-run + warning header"]
+    D3 --> H2["Operator reviews + runs the script"]
+    H2 --> R(["Corrected message on the EXACT original partition"])
 
-    rect rgb(224,242,241)
-    Note over Eng,K: 2 · inspect (read-only)
-    Eng->>CLI: inspect --topic t --partition p --offset o
-    CLI->>MS: fetchRaw(position)
-    MS->>K: assign + seek, poll as raw bytes (no deserializer)
-    K-->>MS: raw bytes + key/headers/timestamp/size
-    MS-->>CLI: RawMessage
-    CLI-->>Eng: hex + best-effort UTF-8 + labeled heuristic
-    end
+    R -.-> N["Unsticking the group is a separate, deliberate<br/>human step — the tool never auto-advances offsets (R4.6)"]
 
-    rect rgb(255,243,224)
-    Note over Eng,K: 3 · gen-reinject (no cluster writes)
-    Eng->>Eng: fix root cause, write corrected-payload file
-    Eng->>CLI: gen-reinject ... --corrected-payload f
-    CLI->>MS: planReinjection(original, correctedBytes)
-    MS-->>CLI: ReinjectionPlan (Java producer script)
-    CLI-->>Eng: reviewable script (dry-run + warning header)
-    end
-
-    rect rgb(255,235,238)
-    Note over Eng,K: 4 · human-run recovery (separate, deliberate)
-    Eng->>K: review, then run script to produce to the EXACT partition
-    Note over Eng,K: Unsticking the group is a separate explicit step. The tool never auto-advances offsets (R4.6)
-    end
+    classDef tool fill:#dbeafe,stroke:#1e40af,color:#111,stroke-width:1.5px;
+    classDef data fill:#ecfccb,stroke:#4d7c0f,color:#111;
+    classDef human fill:#fef3c7,stroke:#b45309,color:#111;
+    classDef term fill:#f3f4f6,stroke:#6b7280,color:#111;
+    classDef note fill:#fee2e2,stroke:#b91c1c,color:#111;
+    class S1,S2,S3 tool;
+    class D1,D2,D3 data;
+    class H1,H2 human;
+    class A,R term;
+    class N note;
 ```
 
 ## Testing Phase 0
