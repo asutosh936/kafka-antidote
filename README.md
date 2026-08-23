@@ -33,49 +33,31 @@ immutable value types — never on Kafka classes directly. That is what lets fut
 Connect support be added later as new `MessageSource` implementations without touching anything else.
 
 ```mermaid
-flowchart TB
-    Eng(["On-call engineer"])
+flowchart TD
+    Eng["On-call engineer"] --> CLI
 
-    subgraph cliMod["antidote-cli module"]
+    subgraph M1["antidote-cli module"]
         direction TB
-        subgraph cli["cli package · picocli"]
-            D["diagnose"]
-            I["inspect"]
-            G["gen-reinject"]
-        end
-        subgraph core["core package · THE BOUNDARY (§4)"]
-            MS{{"MessageSource<br/>interface"}}
-            VT["Immutable value types:<br/>GroupCoordinates · StuckPosition<br/>TopicPartitionOffset · RawMessage<br/>ReinjectionPlan · FailureClassification"]
-        end
-        subgraph impl["consumer package · v0.1 impl (Phase 1+)"]
-            CMS["ConsumerMessageSource"]
-        end
+        CLI["cli · picocli commands<br/>diagnose · inspect · gen-reinject"]
+        CORE["core · MessageSource interface + value types<br/>◀ the §4 boundary ▶"]
+        IMPL["consumer · ConsumerMessageSource<br/>v0.1 implementation"]
+        CLI -->|"calls"| CORE
+        CORE -->|"resolved to"| IMPL
     end
 
-    KC["kafka-clients<br/>AdminClient · Consumer · Producer"]
-    BROKER[("Kafka broker")]
+    IMPL --> KAFKA["kafka-clients"]
+    KAFKA --> BROKER[("Kafka broker")]
 
-    subgraph fx["poison-fixtures module · test-only"]
-        PFG["PoisonFixtureGenerator<br/>5 poison types"]
-    end
-
-    Eng --> D & I & G
-    D --> MS
-    I --> MS
-    G --> MS
-    D -.->|only depends on| VT
-    I -.-> VT
-    G -.-> VT
-    MS -.->|implemented by| CMS
-    CMS --> KC --> BROKER
-    PFG -.->|seeds test broker| BROKER
-
-    classDef boundary fill:#fde68a,stroke:#b45309,color:#111;
-    class MS,VT boundary;
+    style CORE fill:#fde68a,stroke:#b45309,color:#111,stroke-width:2px
 ```
 
-The highlighted `core` package is the boundary: everything above it depends inward on it, and the
-one implementation below it (`ConsumerMessageSource`) plugs in through it.
+The highlighted `core` package is the boundary. The CLI calls only the `MessageSource` interface and
+the immutable value types (`GroupCoordinates`, `StuckPosition`, `TopicPartitionOffset`, `RawMessage`,
+`ReinjectionPlan`, `FailureClassification`); the one v0.1 implementation, `ConsumerMessageSource`,
+plugs in behind it and is the only code that touches `kafka-clients`. Adding a future
+`StreamsMessageSource` or `ConnectMessageSource` means adding a sibling implementation at the same
+seam — nothing above the boundary changes. (The `poison-fixtures` module is a separate, test-only
+corpus generator and is not part of the runtime call path.)
 
 ## End-to-end data flow
 
@@ -91,38 +73,38 @@ sequenceDiagram
     participant K as Kafka broker
 
     rect rgb(224,242,241)
-    Note over Eng,K: 1 · diagnose  (read-only)
-    Eng->>CLI: antidote diagnose --group g --samples 2
+    Note over Eng,K: 1 · diagnose (read-only)
+    Eng->>CLI: diagnose --group g --samples 2
     CLI->>MS: findStuckPositions(group)
-    MS->>K: AdminClient — sample committed & log-end offsets (x2)
+    MS->>K: AdminClient samples committed and log-end offsets, twice
     K-->>MS: offsets
-    MS-->>CLI: List&lt;StuckPosition&gt;
+    MS-->>CLI: list of StuckPosition
     CLI-->>Eng: stuck topic/partition/offset + lag
     end
 
     rect rgb(224,242,241)
-    Note over Eng,K: 2 · inspect  (read-only)
-    Eng->>CLI: antidote inspect --topic t --partition p --offset o
+    Note over Eng,K: 2 · inspect (read-only)
+    Eng->>CLI: inspect --topic t --partition p --offset o
     CLI->>MS: fetchRaw(position)
-    MS->>K: assign + seek, poll as byte[] (bypass failing deserializer)
+    MS->>K: assign + seek, poll as raw bytes (no deserializer)
     K-->>MS: raw bytes + key/headers/timestamp/size
     MS-->>CLI: RawMessage
     CLI-->>Eng: hex + best-effort UTF-8 + labeled heuristic
     end
 
     rect rgb(255,243,224)
-    Note over Eng,K: 3 · gen-reinject  (no cluster writes)
+    Note over Eng,K: 3 · gen-reinject (no cluster writes)
     Eng->>Eng: fix root cause, write corrected-payload file
-    Eng->>CLI: antidote gen-reinject ... --corrected-payload f
+    Eng->>CLI: gen-reinject ... --corrected-payload f
     CLI->>MS: planReinjection(original, correctedBytes)
-    MS-->>CLI: ReinjectionPlan — Java producer script
+    MS-->>CLI: ReinjectionPlan (Java producer script)
     CLI-->>Eng: reviewable script (dry-run + warning header)
     end
 
     rect rgb(255,235,238)
-    Note over Eng,K: 4 · human-run recovery  (separate, deliberate)
-    Eng->>K: review + run script → produce to the EXACT original partition
-    Note over Eng,K: Unsticking the group is a separate explicit step — the tool never auto-advances offsets (R4.6)
+    Note over Eng,K: 4 · human-run recovery (separate, deliberate)
+    Eng->>K: review, then run script to produce to the EXACT partition
+    Note over Eng,K: Unsticking the group is a separate explicit step. The tool never auto-advances offsets (R4.6)
     end
 ```
 
