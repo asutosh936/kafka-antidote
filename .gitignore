@@ -1,0 +1,10 @@
+target/
+*.class
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Planning docs — source of truth, kept out of the tool's git history
+spec-*poison-pill*.md
+implementation-plan*.md
